@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Stickman Runner Cyberpunk</title>
+
+<style>
+body {
+    margin: 0;
+    background: #111;
+    overflow: hidden;
+    color: white;
+    font-family: Arial;
+}
+
+/* PANTALLAS */
+#startScreen, #gameOverScreen {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 20;
+}
+
+.hidden { display: none; }
+
+button {
+    padding: 10px 20px;
+    margin: 5px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+/* GAME */
+#game {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    overflow: hidden;
+}
+
+/* PARALLAX */
+.layer {
+    position: absolute;
+    width: 200%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+
+#sky {
+    background: linear-gradient(#050510, #0a0a2a);
+    z-index: 0;
+}
+
+#cityBack {
+    background: linear-gradient(to top, #111 20%, transparent);
+    bottom: 80px;
+    height: 180px;
+    top: auto;
+    z-index: 1;
+    opacity: 0.5;
+}
+
+#cityFront {
+    background: linear-gradient(to top, #222 20%, transparent);
+    bottom: 60px;
+    height: 200px;
+    top: auto;
+    z-index: 2;
+    animation: glow 2s infinite alternate;
+}
+
+@keyframes glow {
+    from { filter: drop-shadow(0 0 5px cyan); }
+    to { filter: drop-shadow(0 0 20px magenta); }
+}
+
+#ground {
+    background: linear-gradient(to right, #0ff, #00f, #0ff);
+    bottom: 0;
+    height: 60px;
+    z-index: 3;
+    box-shadow: 0 0 20px cyan;
+}
+
+/* STICKMAN */
+#stickman {
+    position: absolute;
+    bottom: 0;
+    left: 80px;
+    width: 40px;
+    height: 100px;
+    z-index: 10;
+}
+
+.head {
+    width: 20px;
+    height: 20px;
+    border: 3px solid white;
+    border-radius: 50%;
+    margin: auto;
+}
+
+.body {
+    width: 3px;
+    height: 40px;
+    background: white;
+    margin: auto;
+}
+
+.arm, .leg {
+    width: 30px;
+    height: 3px;
+    background: white;
+    position: absolute;
+    left: 5px;
+    transform-origin: left center;
+}
+
+.arm { top: 30px; animation: armMove 0.4s infinite alternate; }
+.leg { top: 70px; animation: legMove 0.4s infinite alternate; }
+
+.arm2, .leg2 {
+    left: auto;
+    right: 5px;
+    transform-origin: right center;
+    animation-direction: alternate-reverse;
+}
+
+@keyframes armMove {
+    from { transform: rotate(30deg); }
+    to { transform: rotate(-30deg); }
+}
+
+@keyframes legMove {
+    from { transform: rotate(-30deg); }
+    to { transform: rotate(30deg); }
+}
+
+/* OBSTÃCULOS */
+.obstacle {
+    position: absolute;
+    bottom: 0;
+    width: 20px;
+    background: red;
+    z-index: 10;
+}
+
+/* UI */
+#scoreboard {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 15;
+}
+
+/* LLUVIA */
+#rain {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+/* AUTOS */
+.car {
+    position: absolute;
+    width: 40px;
+    height: 10px;
+    background: cyan;
+    box-shadow: 0 0 10px cyan;
+}
+</style>
+</head>
+
+<body>
+
+<!-- START -->
+<div id="startScreen">
+    <h1>Stickman Runner</h1>
+    <button onclick="startGame()">Nuevo Juego</button>
+    <button onclick="continueGame()">Continuar</button>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameOverScreen" class="hidden">
+    <h1>Game Over</h1>
+    <p id="finalScore"></p>
+    <button onclick="startGame()">Reintentar</button>
+</div>
+
+<div id="game">
+
+    <!-- PARALLAX -->
+    <div id="sky" class="layer"></div>
+    <div id="cityBack" class="layer"></div>
+    <div id="cityFront" class="layer"></div>
+    <div id="ground" class="layer"></div>
+
+    <canvas id="rain"></canvas>
+    <div id="flyingCars"></div>
+
+    <!-- UI -->
+    <div id="scoreboard">
+        Puntos: <span id="score">0</span><br>
+        RÃ©cord: <span id="highscore">0</span>
+    </div>
+
+    <!-- STICKMAN -->
+    <div id="stickman">
+        <div class="head"></div>
+        <div class="body"></div>
+        <div class="arm"></div>
+        <div class="arm arm2"></div>
+        <div class="leg"></div>
+        <div class="leg leg2"></div>
+    </div>
+
+</div>
+
+<audio id="jumpSound" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
+<audio id="music" src="https://assets.mixkit.co/music/preview/mixkit-driving-ambition-32.mp3" loop></audio>
+
+<script>
+const stickman = document.getElementById("stickman");
+const game = document.getElementById("game");
+
+const scoreEl = document.getElementById("score");
+const highscoreEl = document.getElementById("highscore");
+const finalScoreEl = document.getElementById("finalScore");
+
+const startScreen = document.getElementById("startScreen");
+const gameOverScreen = document.getElementById("gameOverScreen");
+
+const jumpSound = document.getElementById("jumpSound");
+const music = document.getElementById("music");
+
+let jumping = false;
+let score = 0;
+let highscore = localStorage.getItem("highscore") || 0;
+let speed = 5;
+let obstacles = [];
+let gameRunning = false;
+
+highscoreEl.textContent = highscore;
+
+/* SAVE SYSTEM */
+const SAVE_KEY = "stickman_save";
+
+function saveGame() {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({score, speed, highscore}));
+}
+
+function loadGame() {
+    const data = localStorage.getItem(SAVE_KEY);
+    return data ? JSON.parse(data) : null;
+}
+
+function clearSave() {
+    localStorage.removeItem(SAVE_KEY);
+}
+
+/* START */
+function startGame() {
+    clearSave();
+    score = 0;
+    speed = 5;
+    obstacles.forEach(o => o.remove());
+    obstacles = [];
+
+    startScreen.classList.add("hidden");
+    gameOverScreen.classList.add("hidden");
+
+    gameRunning = true;
+
+    music.currentTime = 0;
+    music.play();
+}
+
+function continueGame() {
+    const data = loadGame();
+    if (!data) return alert("No hay partida guardada");
+
+    score = data.score;
+    speed = data.speed;
+    highscore = data.highscore;
+
+    scoreEl.textContent = score;
+    highscoreEl.textContent = highscore;
+
+    startScreen.classList.add("hidden");
+    gameOverScreen.classList.add("hidden");
+
+    gameRunning = true;
+}
+
+/* SALTO */
+function jump() {
+    if (!gameRunning || jumping) return;
+
+    jumpSound.currentTime = 0;
+    jumpSound.play();
+
+    jumping = true;
+
+    let up = setInterval(() => {
+        let bottom = parseInt(getComputedStyle(stickman).bottom);
+        if (bottom >= 140) {
+            clearInterval(up);
+            let down = setInterval(() => {
+                let bottom = parseInt(getComputedStyle(stickman).bottom);
+                if (bottom <= 0) {
+                    clearInterval(down);
+                    jumping = false;
+                }
+                stickman.style.bottom = (bottom - 5) + "px";
+            }, 20);
+        }
+        stickman.style.bottom = (bottom + 5) + "px";
+    }, 20);
+}
+document.addEventListener("keydown", jump);
+
+/* OBSTÃCULOS */
+function createObstacle() {
+    if (!gameRunning) return;
+
+    const obs = document.createElement("div");
+    obs.classList.add("obstacle");
+
+    obs.style.height = (Math.random()*40+20)+"px";
+    obs.style.right = "-20px";
+
+    game.appendChild(obs);
+    obstacles.push(obs);
+
+    setTimeout(createObstacle, Math.random()*2000+1000);
+}
+
+/* LOOP */
+function gameLoop() {
+    if (!gameRunning) return;
+
+    score++;
+    scoreEl.textContent = score;
+    speed += 0.002;
+
+    if (score % 50 === 0) saveGame();
+
+    obstacles.forEach((obs, i) => {
+        let right = parseFloat(obs.style.right);
+        obs.style.right = (right + speed) + "px";
+
+        let stickBottom = parseInt(getComputedStyle(stickman).bottom);
+        let obsLeft = obs.getBoundingClientRect().left;
+
+        if (obsLeft < 120 && obsLeft > 60 && stickBottom < 50) gameOver();
+
+        if (right > window.innerWidth) {
+            obs.remove();
+            obstacles.splice(i,1);
+        }
+    });
+
+    requestAnimationFrame(gameLoop);
+}
+
+/* GAME OVER */
+function gameOver() {
+    gameRunning = false;
+
+    if (score > highscore) {
+        localStorage.setItem("highscore", score);
+        highscore = score;
+    }
+
+    saveGame();
+
+    finalScoreEl.textContent = "Puntos: " + score;
+    highscoreEl.textContent = highscore;
+
+    gameOverScreen.classList.remove("hidden");
+}
+
+/* INIT */
+createObstacle();
+gameLoop();
+</script>
+
+</body>
+</html>
